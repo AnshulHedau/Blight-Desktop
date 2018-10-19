@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <link rel="stylesheet" href="report_styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.4/dist/leaflet.css"
+       integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
+       crossorigin=""/>
+    <link href="https://fonts.googleapis.com/css?family=Quicksand" rel="stylesheet">
+
+    <script src="https://www.gstatic.com/firebasejs/4.11.0/firebase.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.bundle.js"></script>
+    <script src="https://unpkg.com/leaflet@1.3.4/dist/leaflet.js"
+    integrity="sha512-nMMmRyTVoLYqjP9hrbed9S+FzjZHW5gY1TWCHA5ckwXZBadntCNs8kEqAWdrb9O7rxbCaA4lKTIWjDXZxflOcA=="
+    crossorigin=""></script>
+
+    <title>Blight - Report</title>
+
+    <script>
+        // Initialize Firebase
+        var config = {
+            apiKey: "AIzaSyBbGWcyla5IKW8s6M7IRhne2d02QzGOYmw",
+            authDomain: "blight-c675c.firebaseapp.com",
+            databaseURL: "https://blight-c675c.firebaseio.com",
+            projectId: "blight-c675c",
+            storageBucket: "blight-c675c.appspot.com",
+            messagingSenderId: "286025009005"
+        };
+        firebase.initializeApp(config);
+    </script>
+</head>
+
+<body>
+  <div id = "title">
+    Blight Report - 00/00/0000
+  </div>
+
+  <div id = "location">
+    Vellore
+  </div>
+
+  <div id = "print_button">
+    <form>
+         <input type="button" value="Print" onclick="window.print()" />
+      </form>
+  </div>
+
+  <div id = "all_values">
+    <div id = "total_alerts">
+      Total alerts issued<br> <br> <span id = "total_alerts_number">-</span>
+    </div>
+
+    <div id = "month_alerts">
+      Alerts in the last 24 hours<br> <br> <span id = "month_alert_number">-</span>
+    </div>
+
+    <div id = "total_help">
+      Total distress calls<br> <br> <span id = "total_help_number">-</span>
+    </div>
+
+    <div id = "month_help">
+      Distress calls in the last 24 hours <br> <br> <span id = "month_help_number">-</span>
+    </div>
+  </div>
+
+  <div id = "mapTitle">Location of the distress calls</div>
+  <div id="mapView"></div>
+
+  <div id = "chart1">
+    <canvas id="summaryAlertChart"></canvas>
+  </div>
+
+  <div id = "chart2">
+    <canvas id="lineAlertChart"></canvas>
+  </div>
+
+</body>
+
+<script>
+  var date = new Date();
+  var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var report_date = date.getDate() + " " + months[date.getMonth()] + " " + date.getFullYear();
+
+  document.getElementById('title').innerHTML = "Blight Report - " + report_date;
+
+  var hourAlert = Array.apply(null, Array(24)).map(Number.prototype.valueOf,0);
+  var hourCall = Array.apply(null, Array(24)).map(Number.prototype.valueOf,0);
+
+  var callMap = L.map('mapView').setView([20.5937, 78.9629], 4);
+  L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
+		maxZoom: 18,
+		id: 'mapbox.streets'
+	}).addTo(callMap);
+
+  try {
+    callMap.on("mouseout", function() {
+      var markerGroup = new L.featureGroup(allMarkers);
+      callMap.fitBounds(markerGroup.getBounds());
+    });
+  } catch (err) {}
+
+  var allMarkers = [];
+
+  var alertRef = firebase.database().ref('alert_history_log/').on('value', function(snapshot) {
+      var alerts = snapshot.numChildren();
+      document.getElementById("total_alerts_number").innerHTML = alerts;
+      var month_alert_count = 0;
+      var date = new Date();
+      var request_millis = date.getTime();
+
+      var Earthquakes = 0;
+      var Thunderstorms = 0;
+      var Floods = 0;
+      var Forest_Fires = 0;
+
+      for (i = 0; i < alerts; i++) {
+        var object_key = Object.keys(snapshot.val())[i];
+
+        var singlealertRef = firebase.database().ref("alert_history_log/" + object_key);
+        singlealertRef.on('value', function(snapshot) {
+            // Counting the last alerts in 24 hours
+            millis = snapshot.val().alert_millis;
+            if ((request_millis - 86400000) < millis) {
+              month_alert_count += 1;
+            }
+            document.getElementById("month_alert_number").innerHTML = month_alert_count;
+
+            // Counting the alerts per 24-hour basis
+            timeValue = Number(snapshot.val().time.split(":")[0]);
+            hourAlert[timeValue]++;
+
+            // Counting the types of calamities
+            if (snapshot.val().alert_type == "Flood") {
+              Floods += 1; }
+
+            if (snapshot.val().alert_type == "Thunderstorm") {
+              Thunderstorms += 1; }
+
+            if (snapshot.val().alert_type == "Forest Fire") {
+              Forest_Fires += 1; }
+
+            if (snapshot.val().alert_type == "Earthquake") {
+              Earthquakes += 1; }
+
+            try {
+              alertSummaryChart.destroy();
+              lineChart.destroy();
+            } catch(err){}
+
+            alertSummaryChart = new Chart(chart1, {
+              type: 'polarArea',
+              data: {
+                datasets: [{
+                  data: [Earthquakes, Thunderstorms, Floods, Forest_Fires],
+                  backgroundColor: ['#4FC3F7','#FF5964','#FFE74C','#7AC74F'],
+                  label: "Types of calamities",
+                }],
+                labels: ["Earthquakes", "Thunderstorms", "Floods", "Forest Fires"],
+              },
+
+              options: {
+                responsive: true,
+                legend: {
+                  position: 'right',
+                },
+
+                title: {
+                  display: true,
+                  text: 'Calamities Summary'
+                },
+
+                scale: {
+                  ticks: {
+                    min: 0,
+                    stepSize: 1
+                  }
+                }
+              }
+            });
+
+            lineChart = new Chart(chart2, {
+              type: 'line',
+        			data: {
+        				labels: ['12AM','1AM','2AM','3AM','4AM','5AM','6AM','7AM','8AM','9AM','10AM','11AM'
+                  ,'12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM'],
+        				datasets: [{
+        					label: 'Alerts',
+        					backgroundColor: '#97B9E5',
+        					borderColor: '#86A4CC',
+        					fill: true,
+        					data: hourAlert,
+        				},
+                {
+        					label: 'Distress Calls',
+        					backgroundColor: '#B0FF92',
+        					borderColor: '#9EE582',
+        					fill: true,
+        					data: hourCall,
+        				}]
+        			},
+        			options: {
+        				title: {
+        					text: '24-Hour of Alerts/Help'
+        				}
+              }
+            });
+
+        });
+      }
+    });
+
+  var helpRef = firebase.database().ref('help_requests_log/').on('value', function(snapshot) {
+      var helps = snapshot.numChildren();
+      document.getElementById("total_help_number").innerHTML = helps;
+
+      month_help_count = 0;
+      var date = new Date();
+      var request_millis = date.getTime();
+
+      for (i = 0; i < helps; i++) {
+        var object_key = Object.keys(snapshot.val())[i];
+
+        var singlealertRef = firebase.database().ref("help_requests_log/" + object_key);
+        singlealertRef.on('value', function(snapshot) {
+            millis = snapshot.val().alert_millis;
+
+            if ((request_millis - 86400000) < Number(millis)) {
+              month_help_count += 1;
+            }
+
+            // Marking the location of the distress calls on the map
+            var circleMarker = L.circle([Number(snapshot.val().lat), Number(snapshot.val().lon)], {
+                color: 'red',
+                fillColor: '#f03',
+                fillOpacity: 0.3,
+                radius: 30
+            }).addTo(callMap);
+
+            allMarkers.push(circleMarker);
+            var markerGroup = new L.featureGroup(allMarkers);
+            callMap.fitBounds(markerGroup.getBounds());
+
+            // Counting the distress calls per 24-hour basis
+            timeValue = Number(snapshot.val().time.split(":")[0]);
+            hourCall[timeValue]++;
+
+            document.getElementById("month_help_number").innerHTML = month_help_count;
+
+            try {
+              lineChart.destroy();
+            } catch(err){}
+
+            lineChart = new Chart(chart2, {
+              type: 'line',
+        			data: {
+        				labels: ['12AM','1AM','2AM','3AM','4AM','5AM','6AM','7AM','8AM','9AM','10AM','11AM'
+                  ,'12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM'],
+        				datasets: [{
+        					label: 'Alerts',
+        					backgroundColor: '#97B9E5',
+        					borderColor: '#86A4CC',
+        					fill: true,
+        					data: hourAlert,
+        				},
+                {
+        					label: 'Distress Calls',
+        					backgroundColor: '#B0FF92',
+        					borderColor: '#9EE582',
+        					fill: true,
+        					data: hourCall,
+        				}]
+        			},
+        			options: {
+        				title: {
+        					text: 'Hour-graph of Alerts/Calls',
+                  display: true
+        				}
+              }
+            });
+        });
+      }
+  });
+</script>
+
+<script>
+  var chart1 = document.getElementById("summaryAlertChart");
+  var chart2 = document.getElementById("lineAlertChart");
+</script>
